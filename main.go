@@ -14,7 +14,7 @@ import (
 	"github.com/h2non/filetype"
 )
 
-const baseURL string = "https://zqsd.eu/"
+const baseURL string = "https://example.com/"
 const port string = ":8090"
 const MB = 1 << 20
 
