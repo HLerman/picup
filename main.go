@@ -30,6 +30,7 @@ func upload(w http.ResponseWriter, req *http.Request) {
 	if req.Method == "POST" {
 		file, err := fileUpload(req)
 		if err != nil {
+			log.SetOutput(os.Stderr)
 			log.Println(err)
 
 			w.WriteHeader(http.StatusInternalServerError)
