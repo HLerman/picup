@@ -28,13 +28,15 @@ func upload(w http.ResponseWriter, req *http.Request) {
 	req.Body = http.MaxBytesReader(w, req.Body, 10*MB)
 
 	if req.Method == "POST" {
-		file, err := FileUpload(req)
+		file, err := fileUpload(req)
 		if err != nil {
 			log.Println(err)
 
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("500 - Something bad happened!"))
 		} else {
+			log.SetOutput(os.Stdout)
+			log.Println("file uploaded to " + file)
 			fmt.Fprintf(w, "%s%s", baseURL, file)
 		}
 	}
@@ -47,7 +49,7 @@ func main() {
 	http.ListenAndServe(port, nil)
 }
 
-func FileUpload(r *http.Request) (string, error) {
+func fileUpload(r *http.Request) (string, error) {
 	r.ParseMultipartForm(32 << 20)
 
 	file, handler, err := r.FormFile("file")
@@ -65,7 +67,7 @@ func FileUpload(r *http.Request) (string, error) {
 
 	io.Copy(f, file)
 
-	_, err = GetFileContentType(directory + handler.Filename)
+	_, err = getFileContentType(directory + handler.Filename)
 	if err != nil {
 		return "", err
 	}
@@ -97,7 +99,7 @@ func createDirectory() string {
 	return folderPath + "/"
 }
 
-func GetFileContentType(filePath string) (string, error) {
+func getFileContentType(filePath string) (string, error) {
 	buf, _ := ioutil.ReadFile(filePath)
 
 	kind, _ := filetype.Match(buf)
