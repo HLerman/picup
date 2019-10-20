@@ -20,6 +20,13 @@ const MB = 1 << 20
 
 var acceptedType = [...]string{"image/x-icon", "image/gif", "image/png", "image/jpeg", "image/vnd.adobe.photoshop", "image/tiff"}
 
+func main() {
+	http.HandleFunc("/ping", ping)
+	http.HandleFunc("/upload", upload)
+
+	http.ListenAndServe(port, nil)
+}
+
 func ping(w http.ResponseWriter, req *http.Request) {
 	fmt.Fprintf(w, "pong")
 }
@@ -30,24 +37,15 @@ func upload(w http.ResponseWriter, req *http.Request) {
 	if req.Method == "POST" {
 		file, err := fileUpload(req)
 		if err != nil {
-			log.SetOutput(os.Stderr)
-			log.Println(err)
+			sendLog("strerr", err)
 
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("500 - Something bad happened!"))
 		} else {
-			log.SetOutput(os.Stdout)
-			log.Println("file uploaded to " + file)
+			sendLog("stdout", "file uploaded to "+file)
 			fmt.Fprintf(w, "%s%s", baseURL, file)
 		}
 	}
-}
-
-func main() {
-	http.HandleFunc("/ping", ping)
-	http.HandleFunc("/upload", upload)
-
-	http.ListenAndServe(port, nil)
 }
 
 func fileUpload(r *http.Request) (string, error) {
@@ -74,6 +72,15 @@ func fileUpload(r *http.Request) (string, error) {
 	}
 
 	return directory + handler.Filename, nil
+}
+
+func sendLog(std string, message ...interface{}) {
+	log.SetOutput(os.Stdout)
+	if std == "stderr" {
+		log.SetOutput(os.Stderr)
+	}
+
+	log.Println(message)
 }
 
 func randomName(size uint8) string {
