@@ -1,7 +1,7 @@
 Provide a minimalist upload system.
 Can be used for both upload and download.
 
-#Usage
+# Usage
 
 ``` Bash
 $ picup -d ./download -p 8090
