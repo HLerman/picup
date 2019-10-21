@@ -1,6 +1,11 @@
 Provide a minimalist upload system.
 Can be used for both upload and download.
 
+# Dependencies
+
+* github.com/spf13/viper
+* github.com/h2non/filetype
+
 # Usage
 
 ``` Bash
