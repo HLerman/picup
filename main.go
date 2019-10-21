@@ -48,7 +48,7 @@ func ping(w http.ResponseWriter, req *http.Request) {
 }
 
 func upload(w http.ResponseWriter, req *http.Request) {
-	req.Body = http.MaxBytesReader(w, req.Body, 10*MB)
+	req.Body = http.MaxBytesReader(w, req.Body, viper.GetInt64("maxSizeInMB")*MB)
 
 	if req.Method == "POST" {
 		file, err := fileUpload(req)
@@ -137,7 +137,7 @@ func randomName(size uint8) string {
 
 	name := ""
 	for i := uint8(0); i < size; i++ {
-		letter := rand.Intn(25)
+		letter := rand.Intn(len(letters))
 		name = name + letters[letter]
 	}
 
