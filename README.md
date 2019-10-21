@@ -23,6 +23,8 @@ $ curl -F 'file=@path/to/local/file' http://127.0.0.1:8090/upload
 
 # Config
 
+Configuration file can be in JSON, TOML or YAML in the current directory; picup will lookup for .config.json, .config.toml or .config
+
 | entry            | value            | comment          |
 | ---------------- | ---------------- | ---------------- |
 | port             | string           | server port      |
