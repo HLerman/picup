@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -14,29 +13,34 @@ import (
 	"strings"
 
 	"github.com/h2non/filetype"
+	"github.com/spf13/viper"
 )
 
-const baseURL string = "http://127.0.0.1:8090/"
 const MB = 1 << 20
-
-var acceptedType = [...]string{"image/x-icon", "image/gif", "image/png", "image/jpeg", "image/vnd.adobe.photoshop", "image/tiff"}
 
 type FileSystem struct {
 	fs http.FileSystem
 }
 
 func main() {
-	directory := flag.String("d", "./download", "directory of uploaded files")
-	port := flag.String("p", "8090", "port to serve on")
-	flag.Parse()
+	viper.SetConfigName("config")
+	viper.AddConfigPath(".")
 
-	fileServer := http.FileServer(FileSystem{http.Dir(*directory)})
+	if err := viper.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			log.Panic("Config file not found")
+		} else {
+			log.Panic("Config file seems not well formated")
+		}
+	}
+
+	fileServer := http.FileServer(FileSystem{http.Dir(viper.GetString("directory"))})
 
 	http.HandleFunc("/ping", ping)
 	http.HandleFunc("/upload", upload)
 	http.Handle("/download/", http.StripPrefix(strings.TrimRight("/download/", "/"), fileServer))
 
-	http.ListenAndServe(":"+*port, nil)
+	http.ListenAndServe(":"+viper.GetString("port"), nil)
 }
 
 func ping(w http.ResponseWriter, req *http.Request) {
@@ -55,7 +59,7 @@ func upload(w http.ResponseWriter, req *http.Request) {
 			w.Write([]byte("500 - Something bad happened!"))
 		} else {
 			sendLog("stdout", "file uploaded to "+file)
-			fmt.Fprintf(w, "%s%s", baseURL, file)
+			fmt.Fprintf(w, "%s%s", viper.GetString("baseUrl"), file)
 		}
 	}
 }
@@ -86,7 +90,7 @@ func fileUpload(r *http.Request) (string, error) {
 	}
 	defer file.Close()
 
-	directory := createDirectory()
+	directory := createAndReturnDirectory()
 	f, err := os.OpenFile(directory+handler.Filename, os.O_WRONLY|os.O_CREATE, 0644)
 
 	if err != nil {
@@ -95,9 +99,21 @@ func fileUpload(r *http.Request) (string, error) {
 
 	io.Copy(f, file)
 
-	_, err = getFileContentType(directory + handler.Filename)
+	contentType, err := getFileContentType(directory + handler.Filename)
 	if err != nil {
 		return "", err
+	}
+
+	acceptedType := viper.GetStringSlice("acceptedFileType")
+	accepted := false
+	for i := 0; i < len(acceptedType); i++ {
+		if contentType == acceptedType[i] {
+			accepted = true
+		}
+	}
+
+	if accepted != true {
+		return "", errors.New("Unaccepted file format " + contentType)
 	}
 
 	return directory + handler.Filename, nil
@@ -128,7 +144,7 @@ func randomName(size uint8) string {
 	return name
 }
 
-func createDirectory() string {
+func createAndReturnDirectory() string {
 	folderPath := "download/" + randomName(7)
 	newpath := filepath.Join(folderPath)
 	os.MkdirAll(newpath, os.ModePerm)
@@ -137,25 +153,16 @@ func createDirectory() string {
 }
 
 func getFileContentType(filePath string) (string, error) {
-	buf, _ := ioutil.ReadFile(filePath)
+	buf, err := ioutil.ReadFile(filePath)
+
+	if err != nil {
+		return "", err
+	}
 
 	kind, _ := filetype.Match(buf)
 	if kind == filetype.Unknown {
 		return "", errors.New("Unknown file type")
 	}
 
-	contentType := kind.MIME.Value
-
-	accepted := false
-	for i := 0; i < len(acceptedType); i++ {
-		if contentType == acceptedType[i] {
-			accepted = true
-		}
-	}
-
-	if accepted != true {
-		return "", errors.New("Unaccepted file format " + kind.MIME.Value)
-	}
-
-	return contentType, nil
+	return kind.MIME.Value, nil
 }

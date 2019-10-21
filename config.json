@@ -1,0 +1,13 @@
+{
+    "port":"8090",
+    "baseUrl":"http://127.0.0.1:8090/",
+    "directory":"./download",
+    "acceptedFileType":[
+        "image/x-icon",
+        "image/gif",
+        "image/png",
+        "image/jpeg",
+        "image/vnd.adobe.photoshop",
+        "image/tiff"
+    ]
+}
