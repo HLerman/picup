@@ -26,11 +26,17 @@ func main() {
 	viper.SetConfigName("config")
 	viper.AddConfigPath(".")
 
+	viper.SetDefault("port", ":8090")
+	viper.SetDefault("baseUrl", "http://127.0.0.1:8090/")
+	viper.SetDefault("directory", "./download")
+	viper.SetDefault("maxSizeInMB", 10)
+	viper.SetDefault("acceptedFileType", []string{})
+
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			log.Panic("Config file not found")
+			log.Fatal("Config file not found")
 		} else {
-			log.Panic("Config file seems not well formated")
+			log.Fatal("Config file seems not well formated")
 		}
 	}
 
@@ -98,9 +104,13 @@ func fileUpload(r *http.Request) (string, error) {
 	}
 
 	io.Copy(f, file)
+	f.Close()
 
 	contentType, err := getFileContentType(directory + handler.Filename)
 	if err != nil {
+		// remove file because it's not a valid type
+		os.Remove(directory + handler.Filename)
+
 		return "", err
 	}
 
@@ -113,6 +123,9 @@ func fileUpload(r *http.Request) (string, error) {
 	}
 
 	if accepted != true {
+		// remove file because it's not a valid type
+		os.Remove(directory + handler.Filename)
+
 		return "", errors.New("Unaccepted file format " + contentType)
 	}
 
