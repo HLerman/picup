@@ -22,15 +22,14 @@ type FileSystem struct {
 	fs http.FileSystem
 }
 
-func main() {
+func init() {
 	viper.SetConfigName("config")
 	viper.AddConfigPath(".")
 
-	viper.SetDefault("port", ":8090")
-	viper.SetDefault("baseUrl", "http://127.0.0.1:8090/")
-	viper.SetDefault("directory", "./download")
-	viper.SetDefault("maxSizeInMB", 10)
-	viper.SetDefault("acceptedFileType", []string{})
+	initialize()
+}
+
+func main() {
 
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
@@ -178,4 +177,12 @@ func getFileContentType(filePath string) (string, error) {
 	}
 
 	return kind.MIME.Value, nil
+}
+
+func initialize() {
+	viper.SetDefault("port", ":8090")
+	viper.SetDefault("baseUrl", "http://127.0.0.1:8090/")
+	viper.SetDefault("directory", "./download")
+	viper.SetDefault("maxSizeInMB", 10)
+	viper.SetDefault("acceptedFileType", []string{})
 }
