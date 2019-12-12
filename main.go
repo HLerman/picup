@@ -157,8 +157,7 @@ func randomName(size uint8) string {
 }
 
 func createAndReturnDirectory() string {
-	folderPath := "download/" + randomName(7)
-	newpath := filepath.Join(folderPath)
+	newpath := filepath.Join(viper.GetString("directory"), randomName(7))
 	os.MkdirAll(newpath, os.ModePerm)
 
 	return folderPath + "/"
