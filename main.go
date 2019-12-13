@@ -51,7 +51,7 @@ func main() {
 			fileServer,
 		),
 	)
-	
+
 	http.ListenAndServe(":"+viper.GetString("port"), nil)
 }
 
@@ -71,7 +71,8 @@ func upload(w http.ResponseWriter, req *http.Request) {
 			w.Write([]byte("500 - Something bad happened!"))
 		} else {
 			sendLog("stdout", "file uploaded to "+file)
-			fmt.Fprintf(w, "%s%s", viper.GetString("baseUrl"), file)
+			
+			fmt.Fprintf(w, "%s%s", strings.TrimRight(viper.GetString("baseUrl"), "/"), file)
 		}
 	}
 }
