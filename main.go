@@ -40,11 +40,18 @@ func main() {
 	}
 
 	fileServer := http.FileServer(FileSystem{http.Dir(viper.GetString("directory"))})
+	downloadRoute := "/" + strings.TrimLeft(strings.TrimRight(viper.GetString("virtualDirectory"),"/"), "/") + "/"
 
 	http.HandleFunc("/ping", ping)
 	http.HandleFunc("/upload", upload)
-	http.Handle("/download/", http.StripPrefix(strings.TrimRight("/download/", "/"), fileServer))
-
+	http.Handle(
+		downloadRoute,
+		http.StripPrefix(
+			downloadRoute,
+			fileServer,
+		),
+	)
+	
 	http.ListenAndServe(":"+viper.GetString("port"), nil)
 }
 
@@ -96,7 +103,10 @@ func fileUpload(r *http.Request) (string, error) {
 	defer file.Close()
 
 	directory := createAndReturnDirectory()
-	f, err := os.OpenFile(directory+handler.Filename, os.O_WRONLY|os.O_CREATE, 0644)
+	filePath := filepath.Join(viper.GetString("directory"), directory, handler.Filename)
+
+	
+	f, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE, 0644)
 
 	if err != nil {
 		return "", err
@@ -105,10 +115,10 @@ func fileUpload(r *http.Request) (string, error) {
 	io.Copy(f, file)
 	f.Close()
 
-	contentType, err := getFileContentType(directory + handler.Filename)
+	contentType, err := getFileContentType(filePath)
 	if err != nil {
 		// remove file because it's not a valid type
-		os.Remove(directory + handler.Filename)
+		os.Remove(filePath)
 
 		return "", err
 	}
@@ -123,12 +133,12 @@ func fileUpload(r *http.Request) (string, error) {
 
 	if accepted != true {
 		// remove file because it's not a valid type
-		os.Remove(directory + handler.Filename)
+		os.Remove(filePath)
 
 		return "", errors.New("Unaccepted file format " + contentType)
 	}
 
-	return directory + handler.Filename, nil
+	return filepath.Join(viper.GetString("virtualDirectory"), directory, handler.Filename), nil
 }
 
 func sendLog(std string, message ...interface{}) {
@@ -157,10 +167,11 @@ func randomName(size uint8) string {
 }
 
 func createAndReturnDirectory() string {
-	newpath := filepath.Join(viper.GetString("directory"), randomName(7))
+	randomPath := randomName(7)
+	newpath := filepath.Join(viper.GetString("directory"), randomPath)
 	os.MkdirAll(newpath, os.ModePerm)
 
-	return folderPath + "/"
+	return randomPath + "/"
 }
 
 func getFileContentType(filePath string) (string, error) {
@@ -181,7 +192,8 @@ func getFileContentType(filePath string) (string, error) {
 func initialize() {
 	viper.SetDefault("port", ":8090")
 	viper.SetDefault("baseUrl", "http://127.0.0.1:8090/")
-	viper.SetDefault("directory", "./download")
+	viper.SetDefault("directory", "download/")
+	viper.SetDefault("virtualDirectory", "/download/")
 	viper.SetDefault("maxSizeInMB", 10)
 	viper.SetDefault("acceptedFileType", []string{})
 }
