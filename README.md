@@ -30,8 +30,9 @@ Configuration file can be in JSON, TOML or YAML in the current directory; picup 
 | port             | string           | server port      |
 | baseUrl          | string           | base url, useful for proxy |
 | directory        | string           | directory used to store upladed file |
+| virtualDirectory | string           | virtual directory used in url to access to the real directory |
 | maxSizeInMB      | int64            | maximum upload size in MB |
 | acceptedFileType | string array     | array of mime accepted type, complete available list : https://github.com/h2non/filetype#supported-types |
 
-Complete url is formed with baseUrl, directory and file path.
+Complete url is formed with baseUrl, virtualDirectory and file path.
 Ex : (http://127.0.0.1:8090/) + (download/) + (zaefgrd/file)
