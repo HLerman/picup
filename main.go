@@ -40,14 +40,13 @@ func main() {
 	}
 
 	fileServer := http.FileServer(FileSystem{http.Dir(viper.GetString("directory"))})
-	downloadRoute := "/" + strings.TrimLeft(strings.TrimRight(viper.GetString("virtualDirectory"),"/"), "/") + "/"
 
 	http.HandleFunc("/ping", ping)
 	http.HandleFunc("/upload", upload)
 	http.Handle(
-		downloadRoute,
+		viper.GetString("virtualDirectory"),
 		http.StripPrefix(
-			downloadRoute,
+			viper.GetString("virtualDirectory"),
 			fileServer,
 		),
 	)
@@ -68,11 +67,11 @@ func upload(w http.ResponseWriter, req *http.Request) {
 			sendLog("strerr", err)
 
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("500 - Something bad happened!"))
+			w.Write([]byte(err.Error()))
 		} else {
 			sendLog("stdout", "file uploaded to "+file)
 			
-			fmt.Fprintf(w, "%s%s", strings.TrimRight(viper.GetString("baseUrl"), "/"), file)
+			fmt.Fprintf(w, "%s%s", viper.GetString("baseUrl"), file)
 		}
 	}
 }
@@ -192,9 +191,14 @@ func getFileContentType(filePath string) (string, error) {
 
 func initialize() {
 	viper.SetDefault("port", ":8090")
-	viper.SetDefault("baseUrl", "http://127.0.0.1:8090/")
+	viper.SetDefault("baseUrl", "http://127.0.0.1:8090")
 	viper.SetDefault("directory", "download/")
 	viper.SetDefault("virtualDirectory", "/download/")
 	viper.SetDefault("maxSizeInMB", 10)
 	viper.SetDefault("acceptedFileType", []string{})
+
+	// Rewrite properly the virtualDirectory
+	viper.Set("virtualDirectory", "/" + strings.Trim(viper.GetString("virtualDirectory"), "/") + "/")
+	// Rewrite properly the baseUrl
+	viper.Set("baseUrl", strings.TrimRight(viper.GetString("baseUrl"), "/"))
 }
