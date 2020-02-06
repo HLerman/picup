@@ -59,6 +59,7 @@ func ping(w http.ResponseWriter, req *http.Request) {
 }
 
 func upload(w http.ResponseWriter, req *http.Request) {
+	enableCors(&w)
 	req.Body = http.MaxBytesReader(w, req.Body, viper.GetInt64("maxSizeInMB")*MB)
 
 	if req.Method == "POST" {
@@ -74,6 +75,10 @@ func upload(w http.ResponseWriter, req *http.Request) {
 			fmt.Fprintf(w, "%s%s", viper.GetString("baseUrl"), file)
 		}
 	}
+}
+
+func enableCors(w *http.ResponseWriter) {
+	(*w).Header().Set("Access-Control-Allow-Origin", "*")
 }
 
 func (fs FileSystem) Open(path string) (http.File, error) {
