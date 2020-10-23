@@ -1,158 +1,194 @@
 package main
 
 import (
+	"context"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
+	"os/signal"
+	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"syscall"
+	"time"
 
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
 	"github.com/h2non/filetype"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 const MB = 1 << 20
 
-type FileSystem struct {
-	fs http.FileSystem
-}
-
+// Initialize configuration
 func init() {
 	viper.SetConfigName("config")
 	viper.AddConfigPath(".")
 
-	initialize()
+	err := viper.ReadInConfig()
+	if err != nil {
+		log.Fatal("Fatal error config file: " + err.Error())
+	}
+
+	viper.SetDefault("port", "8090")
+	viper.SetDefault("baseUrl", "http://127.0.0.1:8090")
+	viper.SetDefault("directory", "download/")
+	viper.SetDefault("virtualDirectory", "/download")
+	viper.SetDefault("maxSizeInMB", 10)
+	viper.SetDefault("acceptedFileType", []string{})
+
+	// Rewrite properly the virtualDirectory
+	viper.Set("virtualDirectory", "/"+strings.Trim(viper.GetString("virtualDirectory"), "/"))
+
+	// Rewrite properly the baseUrl
+	viper.Set("baseUrl", strings.TrimRight(viper.GetString("baseUrl"), "/"))
+}
+
+// Initialize logs
+func init() {
+	ljack := &lumberjack.Logger{
+		Filename:   viper.GetString("log.path"),
+		MaxSize:    viper.GetInt("log.maxSize"), // megabytes
+		MaxBackups: viper.GetInt("log.maxBackups"),
+		MaxAge:     viper.GetInt("log.maxAge"), //days
+		Compress:   viper.GetBool("log.compress"),
+	}
+
+	gin.DefaultWriter = io.MultiWriter(os.Stdout, ljack)
+	log.SetOutput(gin.DefaultWriter)
 }
 
 func main() {
+	// Starting application
+	log.WithFields(log.Fields{
+		"Runtime Version": runtime.Version(),
+		"Number of CPUs":  runtime.NumCPU(),
+		"Arch":            runtime.GOARCH,
+	}).Info("Application Initializing")
 
-	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			log.Fatal("Config file not found")
-		} else {
-			log.Fatal("Config file seems not well formated")
-		}
+	// Release or Debug mode
+	if viper.GetString("mode") == "release" {
+		gin.SetMode(gin.ReleaseMode)
+		gin.DisableConsoleColor()
 	}
 
-	fileServer := http.FileServer(FileSystem{http.Dir(viper.GetString("directory"))})
+	// Load Logger and Recovery feature
+	router := gin.New()
+	router.Use(gin.Logger())
+	router.Use(gin.Recovery())
 
-	http.HandleFunc("/ping", ping)
-	http.HandleFunc("/upload", upload)
-	http.Handle(
-		viper.GetString("virtualDirectory"),
-		http.StripPrefix(
-			viper.GetString("virtualDirectory"),
-			fileServer,
-		),
-	)
+	// Allow CORS
+	config := cors.DefaultConfig()
+	config.AllowOrigins = []string{"*"}
+	router.Use(cors.New(config))
 
-	http.ListenAndServe(":"+viper.GetString("port"), nil)
+	// Serving pictures
+	router.Static(viper.GetString("virtualDirectory"), viper.GetString("directory"))
+
+	// Upload picture
+	router.MaxMultipartMemory = viper.GetInt64("maxSizeInMB") << 20
+	router.POST("/upload", fileUpload)
+
+	srv := &http.Server{
+		Addr:    ":" + viper.GetString("port"),
+		Handler: router,
+	}
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen: %s\n", err)
+		}
+	}()
+
+	/* Wait for interrupt signal to gracefully shutdown the server with
+	a timeout of 5 seconds. */
+	quit := make(chan os.Signal)
+
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutdown Server ...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatal("Server Shutdown:", err)
+	}
+
+	select {
+	case <-ctx.Done():
+		log.Println("timeout of 5 seconds.")
+	}
+	log.Println("Server exiting")
 }
 
-func ping(w http.ResponseWriter, req *http.Request) {
-	fmt.Fprintf(w, "pong")
-}
+func fileUpload(c *gin.Context) {
+	// Multipart form
+	form, err := c.MultipartForm()
 
-func upload(w http.ResponseWriter, req *http.Request) {
-	enableCors(&w)
-	req.Body = http.MaxBytesReader(w, req.Body, viper.GetInt64("maxSizeInMB")*MB)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		return
+	}
 
-	if req.Method == "POST" {
-		file, err := fileUpload(req)
+	files := form.File["upload"]
+
+	var results []string
+
+	for _, file := range files {
+		// Upload the file to specific dst.
+		directory := createAndReturnDirectory()
+
+		filePath := filepath.Join(viper.GetString("directory"), directory, file.Filename)
+
+		err := c.SaveUploadedFile(file, filePath)
 		if err != nil {
-			sendLog("strerr", err)
-
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
-		} else {
-			sendLog("stdout", "file uploaded to "+file)
-			
-			fmt.Fprintf(w, "%s%s", viper.GetString("baseUrl"), file)
+			c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+			return
 		}
-	}
-}
 
-func enableCors(w *http.ResponseWriter) {
-	(*w).Header().Set("Access-Control-Allow-Origin", "*")
-}
+		contentType, err := getFileContentType(filePath)
+		if err != nil {
+			// remove file because it's not a valid type
+			os.Remove(filePath)
 
-func (fs FileSystem) Open(path string) (http.File, error) {
-	f, err := fs.fs.Open(path)
-	if err != nil {
-		return nil, err
-	}
-
-	s, err := f.Stat()
-	if s.IsDir() {
-		index := strings.TrimSuffix(path, "/") + "/index.html"
-		if _, err := fs.fs.Open(index); err != nil {
-			return nil, err
+			c.JSON(http.StatusUnsupportedMediaType, gin.H{"message": err.Error()})
+			return
 		}
-	}
 
-	return f, nil
-}
-
-func fileUpload(r *http.Request) (string, error) {
-	r.ParseMultipartForm(32 << 20)
-
-	file, handler, err := r.FormFile("file")
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-
-	directory := createAndReturnDirectory()
-	filePath := filepath.Join(viper.GetString("directory"), directory, handler.Filename)
-
-	
-	f, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE, 0644)
-
-	if err != nil {
-		return "", err
-	}
-
-	io.Copy(f, file)
-	f.Close()
-
-	contentType, err := getFileContentType(filePath)
-	if err != nil {
-		// remove file because it's not a valid type
-		os.Remove(filePath)
-
-		return "", err
-	}
-
-	acceptedType := viper.GetStringSlice("acceptedFileType")
-	accepted := false
-	for i := 0; i < len(acceptedType); i++ {
-		if contentType == acceptedType[i] {
-			accepted = true
+		acceptedType := viper.GetStringSlice("acceptedFileType")
+		accepted := false
+		for i := 0; i < len(acceptedType); i++ {
+			if contentType == acceptedType[i] {
+				accepted = true
+			}
 		}
+
+		if accepted != true {
+			// remove file because it's not a valid type
+			os.Remove(filePath)
+
+			c.JSON(http.StatusUnsupportedMediaType, gin.H{"message": "Unaccepted file format " + contentType})
+			return
+		}
+
+		url, err := url.Parse(viper.GetString("baseUrl"))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+			return
+		}
+
+		url.Path = path.Join(url.Path, viper.GetString("virtualDirectory"), directory, file.Filename)
+		results = append(results, url.String())
 	}
 
-	if accepted != true {
-		// remove file because it's not a valid type
-		os.Remove(filePath)
-
-		return "", errors.New("Unaccepted file format " + contentType)
-	}
-
-	return filepath.Join(viper.GetString("virtualDirectory"), directory, handler.Filename), nil
-}
-
-func sendLog(std string, message ...interface{}) {
-	log.SetOutput(os.Stdout)
-	if std == "stderr" {
-		log.SetOutput(os.Stderr)
-	}
-
-	log.Println(message)
+	c.JSON(http.StatusOK, results)
 }
 
 func randomName(size uint8) string {
@@ -192,18 +228,4 @@ func getFileContentType(filePath string) (string, error) {
 	}
 
 	return kind.MIME.Value, nil
-}
-
-func initialize() {
-	viper.SetDefault("port", ":8090")
-	viper.SetDefault("baseUrl", "http://127.0.0.1:8090")
-	viper.SetDefault("directory", "download/")
-	viper.SetDefault("virtualDirectory", "/download/")
-	viper.SetDefault("maxSizeInMB", 10)
-	viper.SetDefault("acceptedFileType", []string{})
-
-	// Rewrite properly the virtualDirectory
-	viper.Set("virtualDirectory", "/" + strings.Trim(viper.GetString("virtualDirectory"), "/") + "/")
-	// Rewrite properly the baseUrl
-	viper.Set("baseUrl", strings.TrimRight(viper.GetString("baseUrl"), "/"))
 }

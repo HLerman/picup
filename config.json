@@ -1,5 +1,6 @@
 {
-    "port":"8090",
+    "port": 8090,
+    "mode": "release",
     "baseUrl":"http://127.0.0.1:8090/",
     "directory":"download",
     "virtualDirectory":"/d",
@@ -11,5 +12,12 @@
         "image/jpeg",
         "image/vnd.adobe.photoshop",
         "image/tiff"
-    ]
+    ],
+    "log": {
+        "path": "SoAPI.log",
+        "maxSize": 10,
+        "maxBackups": 3,
+        "maxAge": 7,
+        "compress": true
+    }
 }
