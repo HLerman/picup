@@ -1,4 +1,4 @@
-Provide a minimalist upload system.
+Provide a minimalist web upload system.
 Can be used for both upload and download.
 CORS, Multiple upload and log rotate supported.
 
