@@ -13,7 +13,7 @@ require (
 	github.com/spf13/viper v1.10.1
 	github.com/ugorji/go v1.2.7 // indirect
 	golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4 // indirect
-	golang.org/x/sys v0.0.0-20220412071739-889880a91fd5 // indirect
+	golang.org/x/sys v0.1.0 // indirect
 	google.golang.org/protobuf v1.28.0 // indirect
 	gopkg.in/ini.v1 v1.66.4 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
